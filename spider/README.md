@@ -9,6 +9,7 @@ A concurrent web crawler built in Go that crawls and indexes English web pages w
 **Flow:** Scheduler -> Worker Pool -> Frontier (priority queue) -> Fetcher -> Parser -> Storage (SQLite)
 
 **Components:**
+
 - **Scheduler**: Orchestrates worker goroutines and tracks crawl progress
 - **Frontier**: Thread-safe priority queue with per-domain rate limiting and duplicate detection
 - **Fetcher**: HTTP client for downloading pages
@@ -37,6 +38,7 @@ The crawler loads previously crawled URLs from the database, adds seed URLs to t
 ## How It Works
 
 **Crawling Strategy:**
+
 - Breadth-first crawl starting from seed URLs
 - Per-domain rate limiting using a min-heap priority queue
 - Only English pages count toward MaxPages (detected via Content-Language header and HTML lang attribute)
@@ -51,23 +53,9 @@ Each domain gets its own rate limit schedule. When URLs from the same domain are
 ![Database Tables](docs/table.png)
 
 **pages:**
+
 - url (primary key), title, description, content, status_code, crawled_at
 
 **links:**
+
 - source_url, target_url (composite primary key)
-
-## Testing
-
-```bash
-go test ./internal/frontier/...
-go test ./internal/storage/...
-go test ./test/fetcher_parser/...
-```
-
-## Performance
-
-With 20 workers and 1-second rate limiting:
-- Max throughput: 20 requests/second across all domains
-- Actual speed depends on page load times and domain diversity
-- SQLite handles concurrent writes from workers
-- Memory scales with frontier queue size
