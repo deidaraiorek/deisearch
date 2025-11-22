@@ -1,0 +1,50 @@
+# Database files
+*.db
+*.db-shm
+*.db-wal
+search.db
+search.db-shm
+search.db-wal
+
+# Log files
+*.log
+crawler.log
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go vendor directory
+vendor/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Coverage and test files
+coverage.txt
+coverage.html
+*.cover
+
+# Binary output
+/spider/spider
+/spider/main
