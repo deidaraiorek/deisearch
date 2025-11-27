@@ -1,0 +1,8 @@
+# Indexer binary
+indexer
+
+# Test binaries
+*.test
+
+# Coverage
+*.out
