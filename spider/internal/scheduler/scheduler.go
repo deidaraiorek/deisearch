@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,21 +16,23 @@ import (
 
 type Config struct {
 	Workers      int
-	RateLimitSec int
+	RateLimitSec float32
 	MaxPages     int
 	MaxDepth     int
 	UserAgent    string
 }
 
 type Scheduler struct {
-	config   *Config
-	frontier *frontier.Frontier
-	fetcher  *fetcher.Fetcher
-	parser   *parser.Parser
-	db       *storage.Database
+	config         *Config
+	frontier       *frontier.Frontier
+	fetcher        *fetcher.Fetcher
+	browserFetcher *fetcher.BrowserFetcher
+	parser         *parser.Parser
+	db             *storage.Database
 
-	pageCount int
-	mu        sync.Mutex
+	pageCount           int
+	browserFetchedCount int
+	mu                  sync.Mutex
 }
 
 func New(db *storage.Database, config *Config) *Scheduler {
@@ -50,11 +53,12 @@ func New(db *storage.Database, config *Config) *Scheduler {
 	}
 
 	return &Scheduler{
-		config:   config,
-		frontier: frontier.New(crawledURLs, config.RateLimitSec),
-		fetcher:  fetcher.New(config.UserAgent),
-		parser:   parser.New(),
-		db:       db,
+		config:         config,
+		frontier:       frontier.New(crawledURLs, config.RateLimitSec),
+		fetcher:        fetcher.New(config.UserAgent),
+		browserFetcher: fetcher.NewBrowserFetcher(config.UserAgent),
+		parser:         parser.New(),
+		db:             db,
 	}
 }
 
@@ -77,7 +81,11 @@ func (s *Scheduler) Start(ctx context.Context) error {
 
 	wg.Wait()
 
-	log.Printf("Crawling completed. Total pages: %d", s.pageCount)
+	s.mu.Lock()
+	browserCount := s.browserFetchedCount
+	s.mu.Unlock()
+
+	log.Printf("Crawling completed. Total pages: %d (browser-fetched: %d)", s.pageCount, browserCount)
 	return nil
 }
 
@@ -126,14 +134,28 @@ func (s *Scheduler) worker(ctx context.Context, workerID int) {
 }
 
 func (s *Scheduler) crawlURL(ctx context.Context, url string) (bool, error) {
+	// Phase 1: Try with fast HTTP fetcher
 	resp, err := s.fetcher.Fetch(ctx, url)
 	if err != nil {
 		return false, fmt.Errorf("fetch failed: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		resp.Body.Close()
 		return false, fmt.Errorf("non-200 status: %d", resp.StatusCode)
+	}
+
+	// Security: Validate Content-Type to prevent processing non-HTML files
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "" && !isHTMLContentType(contentType) {
+		log.Printf("🔒 Skipping non-HTML content type: %s for %s", contentType, url)
+		return false, nil
+	}
+
+	// Security: Check content length to prevent huge downloads
+	if resp.ContentLength > 10*1024*1024 { // 10MB limit
+		log.Printf("🔒 Skipping oversized content (%d bytes) for %s", resp.ContentLength, url)
+		return false, nil
 	}
 
 	page, links, err := s.parser.Parse(resp, url)
@@ -146,8 +168,38 @@ func (s *Scheduler) crawlURL(ctx context.Context, url string) (bool, error) {
 		return false, nil
 	}
 
+	// Phase 2: If content is insufficient, retry with browser
+	if !page.HasSufficientContent() {
+		log.Printf("⚠️  Insufficient content from HTTP fetch, retrying with browser: %s", url)
+
+		htmlContent, err := s.browserFetcher.FetchHTML(ctx, url)
+		if err != nil {
+			log.Printf("⚠️  Browser fetch failed, skipping page: %v", err)
+			return false, nil
+		}
+
+		// Parse the browser-fetched HTML
+		browserPage, browserLinks, err := s.parser.ParseHTML(htmlContent, url)
+		if err != nil {
+			log.Printf("⚠️  Browser parse failed, skipping page: %v", err)
+			return false, nil
+		}
+
+		if browserPage.HasSufficientContent() {
+			log.Printf("✅ Browser fetch successful for: %s", url)
+			page = browserPage
+			links = browserLinks
+			s.incrementBrowserFetchedCount()
+		} else {
+			// Both HTTP and browser fetch failed to get sufficient content
+			log.Printf("❌ Skipping page with insufficient content (even after browser fetch): %s", url)
+			return false, nil
+		}
+	}
+
+	normalizedURL := parser.NormalizeURLString(page.URL)
 	dbPage := &storage.Page{
-		URL:         page.URL,
+		URL:         normalizedURL,
 		Title:       page.Title,
 		Description: page.Description,
 		Content:     page.Content,
@@ -165,7 +217,7 @@ func (s *Scheduler) crawlURL(ctx context.Context, url string) (bool, error) {
 	}
 
 	if len(linkURLs) > 0 {
-		if err := s.db.SaveLinks(url, linkURLs); err != nil {
+		if err := s.db.SaveLinks(normalizedURL, linkURLs); err != nil {
 			log.Printf("🔴 Warning: Failed to save links: %v", err)
 		}
 
@@ -174,6 +226,12 @@ func (s *Scheduler) crawlURL(ctx context.Context, url string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (s *Scheduler) incrementBrowserFetchedCount() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.browserFetchedCount++
 }
 
 func (s *Scheduler) shouldStop() bool {
@@ -200,4 +258,22 @@ func (s *Scheduler) GetStats() map[string]interface{} {
 		"pages_crawled": s.pageCount,
 		"queue_size":    s.frontier.Size(),
 	}
+}
+
+func isHTMLContentType(contentType string) bool {
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+
+	htmlTypes := []string{
+		"text/html",
+		"application/xhtml+xml",
+		"application/xhtml",
+	}
+
+	for _, htmlType := range htmlTypes {
+		if strings.HasPrefix(contentType, htmlType) {
+			return true
+		}
+	}
+
+	return false
 }

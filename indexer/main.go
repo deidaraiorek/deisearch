@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/yourusername/deisearch/indexer/internal/indexer"
+	"github.com/deidaraiorek/deisearch/indexer/internal/indexer"
 )
 
 func main() {
@@ -18,9 +18,9 @@ func main() {
 	multiWriter := io.MultiWriter(os.Stdout, logFile)
 	log.SetOutput(multiWriter)
 
-	spiderDBPath := "/Users/dangpham/Dev/deisearch/search.db"
+	spiderDBPath := "/Users/dangpham/Dev/deisearch/spider.db"
 	indexDBPath := "/Users/dangpham/Dev/deisearch/index.db"
-	batchSize := 10000
+	batchSize := 100000
 
 	log.Printf("Starting indexer...")
 	log.Printf("Spider DB: %s", spiderDBPath)

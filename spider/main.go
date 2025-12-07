@@ -13,10 +13,18 @@ import (
 )
 
 func main() {
-	dbPath := "/Users/dangpham/Dev/deisearch/search.db"
+	dbPath := "/Users/dangpham/Dev/deisearch/spider.db"
 	logPath := "/Users/dangpham/Dev/deisearch/crawler.log"
 	seedURLs := []string{
-		"https://golang.org",
+		"https://www.nature.com/",
+		"https://www.britannica.com/",
+		"https://www.seriouseats.com/",
+		"https://www.zen-habits.net/",
+		"https://www.goodreads.com/",
+		"https://www.pcgamer.com/",
+		"https://www.economist.com/",
+		"https://www.lonelyplanet.com/",
+		"https://www.metmuseum.org/",
 		"https://go.dev/blog",
 		"https://www.youtube.com",
 		"https://www.hellointerview.com",
@@ -27,6 +35,22 @@ func main() {
 		"https://stackoverflow.com",
 		"https://www.medium.com",
 		"https://www.wikipedia.org",
+		"https://www.bbc.com",
+		"https://www.cnn.com",
+		"https://www.nytimes.com",
+		"https://arxiv.org",
+		"https://pubmed.ncbi.nlm.nih.gov",
+		"https://www.nih.gov",
+		"https://archive.org",
+		"https://khanacademy.org",
+		"https://www.freecodecamp.org",
+		"https://dev.to",
+		"https://css-tricks.com",
+		"https://uxdesign.cc",
+		"https://www.producthunt.com",
+		"https://www.stackexchange.com",
+		"https://www.researchgate.net",
+		"https://www.opensource.org",
 	}
 
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
@@ -47,9 +71,9 @@ func main() {
 
 	log.Println("Creating scheduler...")
 	sched := scheduler.New(db, &scheduler.Config{
-		Workers:      20,
-		RateLimitSec: 1,
-		MaxPages:     750000,
+		Workers:      40,
+		RateLimitSec: 0.05,
+		MaxPages:     500000,
 		UserAgent:    "DeiSearchBot/1.0",
 	})
 

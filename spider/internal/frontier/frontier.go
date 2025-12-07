@@ -53,20 +53,21 @@ type Frontier struct {
 	rateLimit     time.Duration
 }
 
-func New(crawledURLs []string, rateLimitSeconds int) *Frontier {
+func New(crawledURLs []string, rateLimitSeconds float32) *Frontier {
 	pq := make(PriorityQueue, 0)
 	heap.Init(&pq)
 
 	seen := make(map[string]bool)
 	for _, url := range crawledURLs {
-		seen[url] = true
+		normalizedURL := parser.NormalizeURLString(url)
+		seen[normalizedURL] = true
 	}
 
 	return &Frontier{
 		queue:         &pq,
 		seen:          seen,
 		lastCrawlTime: make(map[string]time.Time),
-		rateLimit:     time.Duration(rateLimitSeconds) * time.Second,
+		rateLimit:     time.Duration(rateLimitSeconds * float32(time.Second)),
 	}
 }
 
@@ -74,14 +75,16 @@ func (f *Frontier) AddURL(url string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if f.seen[url] {
+	normalizedURL := parser.NormalizeURLString(url)
+
+	if f.seen[normalizedURL] {
 		return
 	}
 
-	f.seen[url] = true
+	f.seen[normalizedURL] = true
 
 	item := &URLItem{
-		URL:         url,
+		URL:         normalizedURL,
 		AvailableAt: time.Now(),
 	}
 	heap.Push(f.queue, item)
@@ -102,17 +105,13 @@ func (f *Frontier) AddURLs(links []parser.Link) {
 
 		domain := parser.ExtractDomain(link.URL)
 
-		// Calculate when this URL can be crawled
 		availableAt := now
 		if lastScheduled, exists := f.lastCrawlTime[domain]; exists {
-			// If we already scheduled URLs for this domain,
-			// this URL must wait until after the last scheduled time
 			if lastScheduled.After(now) {
 				availableAt = lastScheduled
 			}
 		}
 
-		// Reserve the next time slot for this domain
 		f.lastCrawlTime[domain] = availableAt.Add(f.rateLimit)
 
 		item := &URLItem{

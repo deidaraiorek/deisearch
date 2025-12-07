@@ -6,13 +6,15 @@ A concurrent web crawler built in Go that crawls and indexes English web pages w
 
 ![Architecture Diagram](docs/diagram.png)
 
-**Flow:** Scheduler -> Worker Pool -> Frontier (priority queue) -> Fetcher -> Parser -> Storage (SQLite)
+**Flow:** Scheduler -> Worker Pool -> Frontier (priority queue) -> Fetcher (HTTP/Browser) -> Parser -> Storage (SQLite)
 
 **Components:**
 
 - **Scheduler**: Orchestrates worker goroutines and tracks crawl progress
 - **Frontier**: Thread-safe priority queue with per-domain rate limiting and duplicate detection
-- **Fetcher**: HTTP client for downloading pages
+- **Fetcher**: Two fetching strategies
+  - **HTTP Fetcher**: Fast HTTP client with robots.txt compliance for static pages
+  - **Browser Fetcher**: Headless Chrome (via chromedp) for JavaScript-heavy sites with 2s render wait
 - **Parser**: Extracts content, filters non-English pages, and normalizes links
 - **Storage**: SQLite database for pages and link graph
 
@@ -47,6 +49,13 @@ The crawler loads previously crawled URLs from the database, adds seed URLs to t
 
 **Rate Limiting:**
 Each domain gets its own rate limit schedule. When URLs from the same domain are queued, they're assigned "available at" timestamps spaced by the rate limit duration. Workers automatically wait if the next URL isn't ready.
+
+**Fetching Strategies:**
+
+The crawler currently uses the HTTP Fetcher for all pages. The Browser Fetcher is available for JavaScript-heavy sites:
+
+- **HTTP Fetcher** (default): Fast, lightweight HTTP requests. Suitable for static sites and server-rendered content. Includes robots.txt compliance and connection pooling.
+- **Browser Fetcher** (available): Headless Chrome browser that executes JavaScript and waits 2 seconds for content to render. Useful for single-page apps (SPAs) and dynamic content, but slower (~3-5x) due to browser overhead.
 
 ## Database Schema
 

@@ -39,7 +39,7 @@ func (p *Parser) Parse(resp *http.Response, baseURL string) (*Page, []Link, erro
 	}
 
 	title := strings.TrimSpace(doc.Find("title").First().Text())
-	description, _ := doc.Find("meta[name=description]").Attr("content")
+	description := p.extractDescription(doc)
 
 	links := p.extractLinks(doc, baseURL)
 
@@ -54,6 +54,54 @@ func (p *Parser) Parse(resp *http.Response, baseURL string) (*Page, []Link, erro
 	}
 
 	return page, links, nil
+}
+
+func (p *Parser) ParseHTML(htmlContent string, baseURL string) (*Page, []Link, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	title := strings.TrimSpace(doc.Find("title").First().Text())
+	description := p.extractDescription(doc)
+
+	links := p.extractLinks(doc, baseURL)
+
+	content := p.extractContent(doc)
+
+	page := &Page{
+		URL:         baseURL,
+		Title:       title,
+		Description: description,
+		Content:     content,
+		StatusCode:  200,
+	}
+
+	return page, links, nil
+}
+
+func (p *Parser) extractDescription(doc *goquery.Document) string {
+	metaSelectors := []string{
+		"meta[name='description']",
+		"meta[property='og:description']",
+		"meta[name='twitter:description']",
+		"meta[property='description']",
+	}
+
+	for _, selector := range metaSelectors {
+		if content, exists := doc.Find(selector).Attr("content"); exists && strings.TrimSpace(content) != "" {
+			return strings.TrimSpace(content)
+		}
+	}
+
+	return ""
+}
+
+func (p *Page) HasSufficientContent() bool {
+	allText := p.Description + " " + p.Content
+	allText = strings.TrimSpace(allText)
+
+	return len(allText) >= 100
 }
 
 func (p *Parser) extractLinks(doc *goquery.Document, baseURL string) []Link {
@@ -79,13 +127,69 @@ func (p *Parser) extractLinks(doc *goquery.Document, baseURL string) []Link {
 }
 
 func (p *Parser) extractContent(doc *goquery.Document) string {
-	doc.Find("script, style, nav, header, footer, aside, iframe, noscript").Remove()
+	contentDoc := doc.Clone()
 
-	content := doc.Find("body").Text()
+	// Remove non-content elements
+	contentDoc.Find("script, style, nav, header, footer, aside, iframe, noscript, form, button").Remove()
 
+	// Strategy 1: Try semantic HTML5 elements first (article, main)
+	var content string
+
+	// Try <article> tag
+	if article := contentDoc.Find("article").First(); article.Length() > 0 {
+		content = article.Text()
+	}
+
+	// Try <main> tag if article didn't work well
+	if len(strings.TrimSpace(content)) < 100 {
+		if main := contentDoc.Find("main").First(); main.Length() > 0 {
+			content = main.Text()
+		}
+	}
+
+	// Strategy 2: Try common content class/id selectors
+	if len(strings.TrimSpace(content)) < 100 {
+		contentSelectors := []string{
+			"#content", ".content", "#main-content", ".main-content",
+			"#article", ".article", "#post", ".post",
+			".entry-content", ".post-content", ".article-content",
+			"[role='main']", ".page-content", "#page-content",
+		}
+
+		for _, selector := range contentSelectors {
+			if elem := contentDoc.Find(selector).First(); elem.Length() > 0 {
+				text := elem.Text()
+				if len(strings.TrimSpace(text)) > len(strings.TrimSpace(content)) {
+					content = text
+				}
+			}
+		}
+	}
+
+	// Strategy 3: Aggregate all paragraph tags
+	if len(strings.TrimSpace(content)) < 100 {
+		var paragraphs []string
+		contentDoc.Find("p").Each(func(i int, s *goquery.Selection) {
+			text := strings.TrimSpace(s.Text())
+			if len(text) > 20 { // Only include substantial paragraphs
+				paragraphs = append(paragraphs, text)
+			}
+		})
+		if len(paragraphs) > 0 {
+			content = strings.Join(paragraphs, " ")
+		}
+	}
+
+	// Strategy 4: Fall back to body if nothing else worked
+	if len(strings.TrimSpace(content)) < 100 {
+		content = contentDoc.Find("body").Text()
+	}
+
+	// Clean up whitespace
 	content = strings.TrimSpace(content)
 	content = strings.Join(strings.Fields(content), " ")
 
+	// Limit size
 	if len(content) > 1000000 {
 		content = content[:1000000]
 	}
@@ -113,36 +217,22 @@ func resolveURL(base, href string) string {
 }
 
 func normalizeURL(u *url.URL) string {
-	trackingParams := map[string]bool{
-		"utm_source":   true,
-		"utm_medium":   true,
-		"utm_campaign": true,
-		"utm_term":     true,
-		"utm_content":  true,
-		"fbclid":       true,
-		"gclid":        true,
-		"source":       true,
-		"ref":          true,
-		"ssrc":         true,
-	}
+	u.RawQuery = ""
 
-	if u.RawQuery != "" {
-		query := u.Query()
-		cleanQuery := url.Values{}
-
-		for key, values := range query {
-			if !trackingParams[key] {
-				cleanQuery[key] = values
-			}
-		}
-
-		if len(cleanQuery) > 0 {
-			u.RawQuery = cleanQuery.Encode()
-		} else {
-			u.RawQuery = ""
-		}
+	if u.Path == "/" {
+		u.Path = ""
+	} else if strings.HasSuffix(u.Path, "/") {
+		u.Path = strings.TrimSuffix(u.Path, "/")
 	}
 	return u.String()
+}
+
+func NormalizeURLString(urlStr string) string {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return urlStr
+	}
+	return normalizeURL(u)
 }
 
 func isValidURL(urlStr string) bool {

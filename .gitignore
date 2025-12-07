@@ -48,3 +48,4 @@ coverage.html
 # Binary output
 /spider/spider
 /spider/main
+/query-engine/query-engine
