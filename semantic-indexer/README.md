@@ -4,6 +4,8 @@ A resumable Go batch indexer that reads crawled pages from `spider.db`, generate
 
 ## Architecture
 
+![Architecture Diagram](docs/diagram.png)
+
 **Flow:** `spider.db` -> Spider DB Reader -> Text Preparation -> Embedding Service -> Embedding Serialization -> `embeddings.db`
 
 **Components:**

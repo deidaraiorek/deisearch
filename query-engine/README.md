@@ -4,6 +4,8 @@ A Go HTTP API that serves both classic TF-IDF keyword search and semantic vector
 
 ## Architecture
 
+![Architecture Diagram](docs/diagram.png)
+
 **Flow:** Frontend / Client -> Query Engine -> `/search` (keyword path) or `/semantic-search` (semantic path) -> `spider.db` metadata -> JSON response
 
 **Components:**

@@ -4,6 +4,8 @@ A multi-stage search system that crawls English web pages, builds a TF-IDF index
 
 ## Architecture
 
+![Architecture Diagram](docs/diagram.png)
+
 **Flow:** Frontend -> Query Engine -> Keyword Search (`index.db` + `spider.db`) / Semantic Search (`embeddings.db` + HNSW + Embedding Service)
 
 **Pipelines:**
