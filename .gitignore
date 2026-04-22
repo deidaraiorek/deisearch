@@ -49,3 +49,7 @@ coverage.html
 /spider/spider
 /spider/main
 /query-engine/query-engine
+/semantic-indexer/semantic-indexer
+/semantic-indexer/*.log
+/embedding-service/venv/
+
