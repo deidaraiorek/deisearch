@@ -33,6 +33,22 @@ A multi-stage search system that crawls English web pages, builds a TF-IDF index
 - **Keyword Index Database**: `index.db`
 - **Semantic Embeddings Database**: `embeddings.db`
 
+## Example Query
+
+Same query: `how to design database from scratch`
+
+**Keyword Search (`/search`)**
+
+![Keyword Search Example](query-engine/docs/keyword-search-example.png)
+
+Keyword search overweights literal token overlap, so it can surface results like `Scratch (programming language)` because of the word `scratch` even when the user intent is about databases.
+
+**Semantic Search (`/semantic-search`)**
+
+![Semantic Search Example](query-engine/docs/semantic-search-example.png)
+
+Semantic search retrieves conceptually related database resources, which better matches the natural-language intent of the query.
+
 ## Usage
 
 ```bash
